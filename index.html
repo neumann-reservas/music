@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playlist de YouTube</title>
+  <style>
+    :root {
+      --primary-color: #4a90e2; --background-color: #f4f5f7; --card-background: #ffffff;
+      --text-color: #333; --text-light: #777; --border-color: #e0e0e0; --error-color: #e74c3c;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0; background-color: var(--background-color); color: var(--text-color);
+      display: flex; justify-content: center; padding: 20px;
+    }
+    .container { width: 100%; max-width: 1200px; display: grid; grid-template-columns: 2fr 1fr; gap: 30px; }
+    .main-content { display: flex; flex-direction: column; }
+    .player-container { position: relative; padding-bottom: 56.25%; height: 0; background-color: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+    .status-display { text-align: center; padding: 10px; margin-top: 15px; font-size: 1.1em; font-weight: 500; color: var(--primary-color); background-color: var(--card-background); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: all 0.3s; }
+    .status-display.error { color: white; background-color: var(--error-color); }
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+    .card { background-color: var(--card-background); border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .card h3 { margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center; }
+    #videoUrl { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; margin-bottom: 10px; }
+    #addButton, #refreshButton { padding: 10px; border: none; border-radius: 6px; background-color: var(--primary-color); color: white; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+    #addButton { width: 100%; }
+    #refreshButton { background-color: #6c757d; font-size: 0.8em; padding: 8px 12px; }
+    #playlist { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; }
+    #playlist li { padding: 12px 5px; border-bottom: 1px solid var(--border-color); cursor: pointer; font-size: 0.9em; transition: background-color 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #playlist li:hover { background-color: #f0f0f0; }
+    #playlist li.active { background-color: #e7f0fe; font-weight: bold; color: var(--primary-color); }
+    #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 25px; background-color: rgba(0,0,0,0.85); color: white; border-radius: 25px; opacity: 0; visibility: hidden; transition: opacity 0.5s, visibility 0.5s; z-index: 1000; }
+    #toast.show { opacity: 1; visibility: visible; }
+    @media (max-width: 900px) { .container { grid-template-columns: 1fr; } .sidebar { order: -1; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="main-content">
+      <div class="player-container"><div id="player"></div></div>
+      <div id="statusDisplay" class="status-display">Cargando...</div>
+    </div>
+    <div class="sidebar">
+      <div class="card">
+        <h3>Añadir Video</h3>
+        <input type="text" id="videoUrl" placeholder="Pega aquí la URL de YouTube">
+        <button id="addButton">Añadir a la Lista</button>
+      </div>
+      <div class="card">
+        <h3>
+          <span>Lista de Reproducción</span>
+          <button id="refreshButton" title="Actualizar lista sin detener el video">Actualizar</button>
+        </h3>
+        <ul id="playlist"></ul>
+      </div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+  <script>
+    // --- CONFIGURACIÓN ---
+    // ¡IMPORTANTE! PEGA AQUÍ LA URL DE TU WEB APP DE GOOGLE APPS SCRIPT
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw40KmipW9tUyWGt1zqVdqYWUgnXEPIeWVGCTYZa5OePzXWalEoCA9SkCCwpqEBirOs/exec';
+
+    let player;
+    let videoIds = [];
+    let currentVideoIndex = 0;
+    
+    // Carga la API de YouTube IFrame
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        height: '390', width: '640', playerVars: { 'playsinline': 1 },
+        events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange, 'onError': onPlayerError }
+      });
+    }
+
+    function onPlayerReady(event) { loadPlaylist(true); } // El 'true' activa el autoplay
+
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) { 
+        updateStatus(`Reproduciendo: Video ${currentVideoIndex + 1} de ${videoIds.length}`, false); 
+        highlightCurrentVideo();
+      }
+      if (event.data === YT.PlayerState.ENDED) { updateStatus("Video terminado. Cargando siguiente...", false); playNextVideo(); }
+    }
+
+    function onPlayerError(event) {
+      showToast(`Video no disponible. Saltando al siguiente...`, true);
+      setTimeout(playNextVideo, 3000);
+    }
+
+    function playNextVideo() {
+      if (videoIds.length === 0) return;
+      currentVideoIndex = (currentVideoIndex + 1) % videoIds.length;
+      player.loadVideoById(videoIds[currentVideoIndex]);
+    }
+
+    function playVideoFromList(index) {
+      currentVideoIndex = index;
+      player.loadVideoById(videoIds[currentVideoIndex]);
+    }
+
+    async function loadPlaylist(autoplay = false) {
+      updateStatus("Actualizando lista...", false);
+      try {
+        const response = await fetch(WEB_APP_URL);
+        const urls = await response.json();
+        
+        videoIds = urls.map(getYouTubeID).filter(id => id);
+        renderPlaylist(urls);
+        
+        if (autoplay && videoIds.length > 0) {
+          player.loadVideoById(videoIds[currentVideoIndex]);
+        } else if (videoIds.length === 0) {
+          updateStatus("La lista está vacía. Añade un video.", false);
+        }
+      } catch (error) {
+        updateStatus("Error al cargar la lista.", true);
+      }
+    }
+
+    document.getElementById('addButton').addEventListener('click', async () => {
+      const urlInput = document.getElementById('videoUrl');
+      if (!urlInput.value) { return showToast("Por favor, ingresa una URL."); }
+      
+      try {
+        const response = await fetch(WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Necesario para Apps Script
+          body: JSON.stringify({ url: urlInput.value })
+        });
+        const result = await response.json();
+        showToast(result.message);
+        
+        if (result.success) {
+          urlInput.value = '';
+          const isPlaying = player.getPlayerState() === 1;
+          loadPlaylist(!isPlaying); // Solo hace autoplay si no hay nada sonando
+        }
+      } catch (error) {
+        showToast("Error al añadir el video.");
+      }
+    });
+
+    document.getElementById('refreshButton').addEventListener('click', () => {
+        loadPlaylist(false); // Carga la lista sin interrumpir
+        showToast("Lista actualizada.");
+    });
+    
+    function renderPlaylist(urls) {
+      const playlistEl = document.getElementById('playlist');
+      playlistEl.innerHTML = '';
+      urls.forEach((url, index) => {
+        const li = document.createElement('li');
+        li.textContent = `Video ${index + 1}: ${url.substring(0, 50)}...`;
+        li.dataset.index = index;
+        li.onclick = () => playVideoFromList(index);
+        playlistEl.appendChild(li);
+      });
+      highlightCurrentVideo();
+    }
+
+    function highlightCurrentVideo() {
+      document.querySelectorAll('#playlist li').forEach((item, index) => {
+        item.classList.toggle('active', index === currentVideoIndex);
+        if(item.classList.contains('active')) {
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+
+    function getYouTubeID(url) {
+      try { const urlObj = new URL(url); return (urlObj.hostname === "youtu.be") ? urlObj.pathname.slice(1) : urlObj.searchParams.get("v"); }
+      catch (e) { return null; }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message; toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); }, 3000);
+    }
+    
+    function updateStatus(message, isError) {
+      const status = document.getElementById('statusDisplay');
+      status.textContent = message; status.classList.toggle('error', isError);
+    }
+  </script>
+</body>
+</html>
