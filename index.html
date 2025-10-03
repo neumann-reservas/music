@@ -106,7 +106,7 @@
   <div id="verification-player"></div> <div id="toast"></div>
 
   <script>
-    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzA8aJRVh69GKruSXmiFEVaHegI31LJwd3ZYaMT-YhCfs6lWaOkl_IaVGdLZ9X8t_gC/exec';
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwEGKez1TJF4JmRjF71TXhOf9LPoIro_bwbBSaMtWIF_GTaFpJvn0gKJD30uK9vPEUk/exec';
     const POLLING_INTERVAL = 4000;
 
     let player, verificationPlayer;
@@ -160,7 +160,6 @@
       const oldPlaylistLength = localPlaylist.length;
       
       localState = state;
-      // Busca metadatos solo si las URLs han cambiado
       if (isInitialLoad || playlistUrls.length !== oldPlaylistLength || !playlistUrls.every((url, i) => url === localPlaylist[i]?.url)) {
         if (!isInitialLoad && playlistUrls.length > oldPlaylistLength) {
           showToast("¡Nueva canción añadida a la fila!");
@@ -181,7 +180,6 @@
       }
     }
     
-    // Nueva función para obtener metadatos en el cliente
     async function fetchMetadataForUrls(urls) {
         const metadataPromises = urls.map(async (url) => {
             try {
@@ -217,7 +215,7 @@
         const urlInput = document.getElementById('videoUrl');
         const url = urlInput.value;
         const videoId = getYouTubeID(url);
-        if (!videoId) return showToast("URL de YouTube no válida.");
+        if (!videoId) return showToast("URL no válida. Solo se aceptan enlaces de YouTube.com.");
         
         isVerifying = true;
         const addButton = document.getElementById('addButton');
@@ -279,14 +277,41 @@
           </div>
         `;
         
-        li.onclick = () => { if (index !== localState.currentVideoIndex) sendAction({ action: 'CHANGE_VIDEO', index: index }); };
+        // <!-- MEJORA 2: Se añade un cuadro de diálogo de confirmación antes de cambiar la canción -->
+        li.onclick = () => { 
+          if (index !== localState.currentVideoIndex) {
+            const userConfirmed = window.confirm(
+              "¿Estás seguro de que quieres cambiar la canción?\n" +
+              "Esto cambiará la reproducción para todos los que estén conectados."
+            );
+            if (userConfirmed) {
+              sendAction({ action: 'CHANGE_VIDEO', index: index }); 
+            }
+          }
+        };
         if (index === localState.currentVideoIndex) li.classList.add('active');
         
         playlistEl.appendChild(li);
       });
     }
 
-    function getYouTubeID(url) { if (!url) return null; try { const u = new URL(url); return u.hostname === "youtu.be" ? u.pathname.slice(1) : u.searchParams.get("v"); } catch (e) { return null; } }
+    // <!-- MEJORA 1: La función ahora solo permite dominios específicos de YouTube -->
+    function getYouTubeID(url) {
+        if (!url) return null;
+        try {
+            const u = new URL(url);
+            const hostname = u.hostname;
+            const validHostnames = ['www.youtube.com', 'youtube.com', 'youtu.be'];
+
+            if (validHostnames.includes(hostname)) {
+                return hostname === "youtu.be" ? u.pathname.slice(1) : u.searchParams.get("v");
+            }
+            return null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function showToast(message) { const t = document.getElementById('toast'); t.textContent = message; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
     function updateStatus(message) { document.getElementById('statusDisplay').textContent = message; }
   </script>
