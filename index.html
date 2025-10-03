@@ -61,7 +61,12 @@
     #addButton:disabled { background-color: #9ca3af; cursor: not-allowed; }
     #password-submit-button:hover, #addButton:hover:not(:disabled) { background-color: var(--accent-hover); }
     #refreshButton { background-color: var(--text-secondary); padding: 0; width: 38px; height: 38px; font-size: 1.2rem; flex-shrink: 0; }
+    
+    /* --- SOLUCIÓN PARA LA BARRA DE DESPLAZAMIENTO --- */
+    .card.playlist-card { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; /* Muy importante */ }
     .playlist-container { flex-grow: 1; overflow-y: auto; }
+    /* --- FIN DE LA SOLUCIÓN --- */
+
     #playlist { list-style: none; padding: 0; margin: 0; }
     .playlist-item { display: flex; align-items: center; gap: 15px; padding: 10px; border-radius: 8px; cursor: pointer; transition: background-color 0.2s; position: relative; }
     .playlist-item + .playlist-item { margin-top: 8px; }
@@ -83,13 +88,15 @@
       .app-container { flex-direction: column; padding: 15px; height: auto; }
       .sidebar { width: 100%; order: -1; padding: 15px; height: auto; }
       .main-content { padding: 0; padding-top: 15px; }
+      .card.playlist-card { overflow: visible; }
+      .playlist-container { overflow-y: visible; max-height: none; }
     }
   </style>
 </head>
 <body class="loading">
   
   <div id="loader-overlay"> <div class="loader"> <div class="bar"></div> <div class="bar"></div> <div class="bar"></div> <div class="bar"></div> <div class="bar"></div> </div> <div class="loader-text">Conectando a la Jukebox...</div> </div>
-  <div class="modal-overlay" id="password-modal"> <div class="modal-card"> <h3>Permiso de DJ Requerido</h3> <p>Ingresa la contraseña para cambiar la canción.</p> <input type="password" id="password-input" placeholder="Contraseña"> <button id="password-submit-button">Autorizar</button> <div class="modal-error" id="password-error"></div> </div> </div>
+  <div class="modal-overlay" id="password-modal"> <div class="modal-card"> <h3>Permiso de DJ Requerido</h3> <p>Ingresa la contraseña para poder cambiar la canción.</p> <input type="password" id="password-input" placeholder="Contraseña"> <button id="password-submit-button">Autorizar</button> <div class="modal-error" id="password-error"></div> </div> </div>
   
   <div class="app-container" id="app-container">
     <div class="main-content">
@@ -104,7 +111,8 @@
         <input type="text" id="videoUrl" placeholder="Pega la URL de YouTube aquí">
         <button id="addButton">Añadir a la Fila</button>
       </div>
-      <div class="card" style="flex-grow: 1; display: flex; flex-direction: column;">
+      <!-- Clase 'playlist-card' añadida para aplicar la solución de scroll -->
+      <div class="card playlist-card">
         <h3> <span>Próximas en la Fila</span> <button id="refreshButton" title="Forzar actualización">↻</button> </h3>
         <div class="playlist-container"><ul id="playlist"></ul></div>
       </div>
